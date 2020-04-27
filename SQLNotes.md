@@ -256,3 +256,226 @@ WHERE (ProductSubcategoryID = 1 AND ListPrice > 100)
 OR    (ProductSubcategoryID = 2 AND ListPrice > 500)
 ```
 
+
+
+**Variables**
+	Placeholders for values. Declared using `DECLARE` and assigned a value using `SET`. 
+	`@` is placed in front of the variable name to declare it as a variable.
+
+```mssql
+DECLARE @MyNumber
+INT SET @MyNumber = 1
+SELECT @MyNumber
+```
+
+Variables can also be assigned a type when declared. A `SELECT` statement can also be used to assign a value to a variable.
+
+```mssql
+DECLARE @var1 nvarchar(30);
+SELECT @var1 = 'Generic Name'; -- default name when ID is not found
+SELECT @var1 = Name
+FROM Sales.Store
+WHERE BusinessEntityID = 1000;
+SELECT @var1 AS 'Company Name' -- Column name as 'Company Name'
+```
+
+
+
+**Function**
+	Purpose of a function is to return a value. Most functions return a scalar value (a single unit of data). Functions can return any data type. Functions are divided into two different groups based on **determinism**. 
+
+**Determinism** is whether the outcome of a function can be predicted based on it's input parameters or by executing at one time.  
+
+If a function is not dependent on any external factors other than the value of input parameters, it is said to be **deterministic**.
+If the output can vary based on any conditions in the environment or algorithms that produce random or dependent variables, then the function is **non-deterministic**. 
+
+​	*more or less like pure and impure functions in functional programming*
+
+Eg. `GETDATE()` is non-deterministic because it will never return the same value.
+
+Combining *functions* with query expressions to modify column values
+
+```mssql
+SELECT JobTitle, NationalIDNumber, YEAR(BirthDate) AS BirthYear
+FROM HumanResources.Employee
+```
+
+Nested Functions
+
+```mssql
+SELECT CONVERT(VARCHAR(20), GETDATE(), 101)
+```
+
+User-defined Functions
+
+```mssql
+CREATE FUNCTION fx_SumTwoValues
+	(@Val1 INT, @Val2 INT)
+RETURNS INT
+
+AS
+
+BEGIN
+RETURN (@Val1 + @Val2)
+END
+
+SELECT dbo.fx_SumTwoValues(1,4) AS SumOfTwoValues
+```
+
+Inline Table-valued Functions (no `BEGIN` and `END`)
+
+```mssql
+CREATE FUNCTION tbfReturnFirstName(@lastName nvarchar(15))
+RETURNS TABLE
+AS
+RETURN
+	(SELECT Firstname FROM Customer WHERE Lastname = @lastName)
+GO
+
+SELECT * FROM tbfReturnFirstName('Adams')
+```
+
+
+
+Multi-Statement Table Valued User Defined Function
+	A user-defined function that returns a table. Can have one or more than one SQL statement.
+
+```mssql
+-- Creates a table and fills it with 1000 values
+CREATE TABLE Table1
+	(ID INT, VALUES_INSERT NVARCHAR(100))
+
+DECLARE @count INT
+SET @count = 0
+WHILE @count < 1000
+BEGIN
+	INSERT INTO Table1
+	SELECT @count, @count
+SET @count = @count + 1
+END
+GO
+
+-- Create a function called 'estimatedRows'
+-- Just like the table above, but a function
+CREATE FUNCTION dbo.estimatedRows(@ID INT)
+RETURNS @IDS TABLE 
+	(ID INT NOT NULL, VALUES_INSERT NVARCHAR(100) NOT NULL)
+AS
+BEGIN
+	INSERT INTO @IDS
+	SELECT ID,VALUES_INSERT FROM Table1
+	WHERE ID > @ID
+RETURN
+END
+GO
+
+SELECT * FROM dbo.estimatedRows(0)
+
+
+```
+
+
+
+Aggregate Functions
+	Return single values from query statement. Eg. What is the average sales for a particular month.
+
+```mssql
+USE AdventureWorks2014
+
+SELECT MIN(ModifiedDate) FROM Sales.Store
+
+SELECT MAX(ModifiedDate) FROM Sales.Store
+
+SELECT MIN(SalesPersonID) FROM Sales.Store
+
+SELECT MAX(SalesPersonID) FROM Sales.Store
+
+SELECT AVG(SalesPersonID) FROM Sales.Store
+
+SELECT SUM(SalesPersonID) FROM Sales.Store
+```
+
+COUNT(*) and COUNT(Distinct)
+	`Count * ` returns the count of all the available rows.
+	`Count(Distinct)` returns the count of distinct(unique) values (counting duplicates as one) in that column
+
+```mssql
+SELECT COUNT(SalesPersonID) AS CountResult FROM Sales.Store
+
+SELECT COUNT(Distinct SalesPersonID) AS CountResult FROM Sales.Store
+```
+
+
+
+Conversion or Cast Functions
+	Functions that 'convert' the type of one value to the other
+
+```mssql
+SELECT CAST('123' AS INT)
+SELECT CAST('123.4' AS FLOAT)
+SELECT CAST('123.4' AS DECIMAL(9,2)) -- 9 - Precision => num of values that can be stored to both left and right the left. 2 - Scale of digits that can be stored on the right of the decimal point
+
+SELECT 'Current Datetime: ' + CONVERT(VARCHAR(50), GETDATE(), 100)
+SELECT 'US Date: ' + CONVERT(VARCHAR(50), GETDATE(), 101)
+```
+
+
+
+**Sub Query**
+	A `select` query within a `select` query. Embedded select statements can be used to return a single column value also known as **Scalar Value Expression**
+
+```mssql
+SELECT ProductID,
+		UnitPrice,
+		(SELECT AVG(UnitPrice) FROM Sales.SalesOrderDetail) AS AvgPrice -- Scalar Value Expression
+FROM Sales.SalesOrderDetail
+
+
+SELECT ProductID,
+		UnitPrice - (SELECT AVG(UnitPrice) FROM Sales.SalesOrderDetail) AS AvgPriceDiff
+FROM Sales.SalesOrderDetail
+```
+
+
+
+**Having Clause**
+	Involves the use of `Having`. Functions like the `WHERE` clause but used after the aggregate function whereas `WHERE` is used before
+
+```mssql
+SELECT Name from Production.Product
+WHERE EXISTS
+	(SELECT SUM(UnitPrice) FROM Sales.SalesOrderDetail
+	WHERE SalesOrderDetail.ProductID = Product.ProductID
+	HAVING SUM(UnitPrice) > 2000
+	)
+```
+
+
+
+**Common Table Expression (CTE) **
+	A sub-query that only exists in memory so doesn't require special permissions or necessary physical disk operations. It's a named object that can be reused and referenced just like a table.
+Useful for performance tuning . It allows us to skip the *System Database*.  It doesn't 'slam' `tempdb` in *System Databases* because it just lives in memory. Starts with a `WITH`
+
+```mssql
+WITH cteAllCustomers
+AS
+(SELECT * FROM Customer)
+SELECT * FROM Customer
+
+
+USE AdventureWorks2014
+GO
+
+SELECT P.* FROM (
+	SELECT ProductID, Name, ListPrice
+	FROM Production.Product WHERE ListPrice > 0) AS P
+
+-- The above query re-written as a CTE
+WITH cteNonFreeProducts (ProductID, Name, ListPrice)
+AS
+	(SELECT ProductID, Name, ListPrice
+	FROM Production.Product
+	WHERE ListPrice > 0)
+	SELECT * FROM cteNonFreeProducts
+```
+
